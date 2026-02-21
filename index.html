@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ApoRx-Check – Apotheke</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    .animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    [x-cloak] { display: none !important; }
+    .card-transition { transition: all 0.2s ease; }
+    .card-transition:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .progress-bar { transition: width 0.5s ease; }
+    .expand-icon { transition: transform 0.2s ease; }
+    .expand-icon.rotated { transform: rotate(180deg); }
+    .quick-tile { transition: transform 0.15s ease; }
+    .quick-tile:hover { transform: scale(1.05); }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
+  <!-- Header -->
+  <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+            <span class="text-white text-xl sm:text-2xl">℞</span>
+          </div>
+          <div>
+            <h1 class="text-lg sm:text-xl font-bold text-slate-800">ApoRx-Check</h1>
+            <p class="text-xs sm:text-sm text-slate-500 hidden sm:block">Schnell &amp; übersichtlich prüfen ob ein Rezept noch gültig ist</p>
+          </div>
+        </div>
+        <div class="text-right">
+          <p class="text-xs text-slate-400">Heute</p>
+          <p id="headerDate" class="text-sm font-semibold text-slate-700"></p>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <!-- Date Input -->
+    <div class="bg-white rounded-2xl shadow-md border border-slate-200 p-5 sm:p-6 mb-6 sm:mb-8">
+      <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+        <div class="flex-1">
+          <label for="issueDate" class="block text-sm font-semibold text-slate-700 mb-1.5">
+            📅 Ausstelldatum des Rezepts
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Geben Sie das Datum ein, an dem das Rezept ausgestellt wurde</p>
+          <input type="date" id="issueDate"
+            class="w-full sm:w-auto rounded-lg border border-slate-300 px-4 py-2.5 text-base font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition" />
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="adjustDays(-1)" class="px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-600 hover:bg-slate-100 transition">− 1 Tag</button>
+          <button onclick="setToday()" class="px-4 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 shadow-sm transition">Heute</button>
+          <button onclick="adjustDays(1)" class="px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-600 hover:bg-slate-100 transition">+ 1 Tag</button>
+        </div>
+      </div>
+      <div id="dateInfo" class="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p id="dateInfoText" class="text-sm text-slate-600"></p>
+        <div class="flex items-center bg-slate-100 rounded-lg p-1">
+          <button id="btnDetail" onclick="setViewMode('detail')" class="px-3 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm text-slate-800">📋 Detailansicht</button>
+          <button id="btnQuick" onclick="setViewMode('quick')" class="px-3 py-1.5 rounded-md text-sm font-medium transition text-slate-500 hover:text-slate-700">⚡ Schnellübersicht</button>
+        </div>
+      </div>
+    </div>
+    <!-- Content Area -->
+    <div id="contentArea"></div>
+    <!-- Legend -->
+    <div class="mt-8 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h3 class="text-sm font-bold text-slate-600 mb-3">Legende</h3>
+      <div class="flex flex-wrap gap-4 text-sm">
+        <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-emerald-500"></span><span class="text-slate-600">Gültig</span></div>
+        <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-amber-500"></span><span class="text-slate-600">Nur als Selbstzahler</span></div>
+        <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-red-400"></span><span class="text-slate-600">Abgelaufen</span></div>
+        <div class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-slate-400"></span><span class="text-slate-600">Prüfung nötig</span></div>
+      </div>
+    </div>
+    <!-- Disclaimer -->
+    <div class="mt-6 rounded-xl bg-amber-50 border border-amber-200 p-4">
+      <div class="flex items-start gap-3">
+        <span class="text-amber-600 text-lg mt-0.5">⚠️</span>
+        <div>
+          <h4 class="text-sm font-bold text-amber-800">Wichtiger Hinweis</h4>
+          <p class="text-xs text-amber-700 mt-1 leading-relaxed">
+            Diese Übersicht dient nur der schnellen Orientierung. Für verbindliche Auskünfte gelten die jeweiligen gesetzlichen Regelungen
+            (SGB V, AMVV, BtMVV). Bei Sonderfällen (z.B. Notfallrezepte, Sonderkennzeichen, Importarzneimittel) können abweichende Fristen gelten.
+            Im Zweifelsfall bitte Rücksprache mit der Krankenkasse oder dem verordnenden Arzt halten.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+  <!-- Footer -->
+  <footer class="mt-12 border-t border-slate-200 bg-white/60 py-6">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 text-center">
+      <p class="text-xs text-slate-400">ApoRx-Check · Keine Gewähr für Richtigkeit · Stand <span id="footerYear"></span></p>
+    </div>
+  </footer>
+<script>
+// ==================== DATA & LOGIC ====================
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function daysBetween(a, b) {
+  return Math.floor((startOfDay(b).getTime() - startOfDay(a).getTime()) / 86400000);
+}
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+function isGermanPublicHoliday(d) {
+  const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+  const fixed = [[0,1],[4,1],[9,3],[11,25],[11,26]];
+  for (const [fm,fd] of fixed) { if (m===fm && day===fd) return true; }
+  // Easter (Gauss)
+  const a=y%19, b=Math.floor(y/100), c=y%100, dd=Math.floor(b/4), e=b%4;
+  const f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3);
+  const h=(19*a+b-dd-g+15)%30, i=Math.floor(c/4), k=c%4;
+  const l=(32+2*e+2*i-h-k)%7, mm=Math.floor((a+11*h+22*l)/451);
+  const easterMonth=Math.floor((h+l-7*mm+114)/31)-1;
+  const easterDay=((h+l-7*mm+114)%31)+1;
+  const easter=new Date(y,easterMonth,easterDay);
+  for (const offset of [-2,0,1,39,49,50,60]) {
+    const hd=addDays(easter,offset);
+    if (hd.getMonth()===m && hd.getDate()===day) return true;
+  }
+  return false;
+}
+function isSundayOrHoliday(d) {
+  return d.getDay()===0 || isGermanPublicHoliday(d);
+}
+function countWerktage(from, to) {
+  let count=0; const current=new Date(startOfDay(from)); const end=startOfDay(to);
+  while (current<=end) { if (!isSundayOrHoliday(current)) count++; current.setDate(current.getDate()+1); }
+  return count;
+}
+function getLastValidWerktag(issueDate, werktage) {
+  let count=0; const current=new Date(startOfDay(issueDate));
+  while (count<werktage) {
+    if (!isSundayOrHoliday(current)) count++;
+    if (count<werktage) current.setDate(current.getDate()+1);
+  }
+  return current;
+}
+const prescriptionTypes = [
+  {
+    id:'kassenrezept', name:'Kassenrezept', subtitle:'Rosa Rezept – Muster 16',
+    icon:'📋', category:'standard', validityDescription:'28 Tage (GKV) / 3 Monate (Selbstzahler)',
+    details:['28 Tage zulasten der GKV gültig','Danach oft noch bis 3 Monate nach Ausstellung als Selbstzahlerrezept einlösbar'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=27) return {status:'valid',label:'Gültig (GKV)',daysRemaining:27-days,explanation:`Noch ${27-days} Tag(e) auf Kassenkosten einlösbar.`};
+      const m3=new Date(issue.getFullYear(),issue.getMonth()+3,issue.getDate());
+      if(check<m3){const dr=daysBetween(check,m3)-1;return{status:'selfpay',label:'Nur als Selbstzahler',daysRemaining:dr,explanation:`GKV-Frist abgelaufen. Noch ca. ${dr} Tag(e) als Selbstzahlerrezept einlösbar.`};}
+      return {status:'expired',label:'Abgelaufen',explanation:'Weder auf Kassenkosten noch als Selbstzahlerrezept einlösbar.'};
+    },totalDays(s){return s==='selfpay'?90:28;}
+  },
+  {
+    id:'erezept', name:'E-Rezept (GKV)', subtitle:'Elektronisches Kassenrezept',
+    icon:'📱', category:'standard', validityDescription:'28 Tage (GKV) / 3 Monate (Selbstzahler)',
+    details:['28 Tage zulasten der Kasse gültig (wie rosa Rezept)','Insgesamt bis 3 Monate nach Ausstellung als Selbstzahler möglich'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=27) return {status:'valid',label:'Gültig (GKV)',daysRemaining:27-days,explanation:`Noch ${27-days} Tag(e) auf Kassenkosten einlösbar.`};
+      const m3=new Date(issue.getFullYear(),issue.getMonth()+3,issue.getDate());
+      if(check<m3){const dr=daysBetween(check,m3)-1;return{status:'selfpay',label:'Nur als Selbstzahler',daysRemaining:dr,explanation:`GKV-Frist abgelaufen. Noch ca. ${dr} Tag(e) als Selbstzahlerrezept einlösbar.`};}
+      return {status:'expired',label:'Abgelaufen',explanation:'Weder auf Kassenkosten noch als Selbstzahlerrezept einlösbar.'};
+    },totalDays(s){return s==='selfpay'?90:28;}
+  },
+  {
+    id:'privatrezept', name:'Privatrezept', subtitle:'Blaues Rezept',
+    icon:'💙', category:'standard', validityDescription:'3 Monate',
+    details:['In der Regel 3 Monate gültig'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      const m3=new Date(issue.getFullYear(),issue.getMonth()+3,issue.getDate());
+      if(check<m3){const dr=daysBetween(check,m3)-1;return{status:'valid',label:'Gültig',daysRemaining:dr,explanation:`Noch ${dr} Tag(e) gültig.`};}
+      return {status:'expired',label:'Abgelaufen',explanation:'Die 3-Monats-Frist ist abgelaufen.'};
+    },totalDays(){return 90;}
+  },
+  {
+    id:'gruenesrezept', name:'Grünes Rezept', subtitle:'OTC-Arzneimittel',
+    icon:'💚', category:'standard', validityDescription:'Unbegrenzt (OTC) / ca. 3 Monate (Rx)',
+    details:['Für OTC-Arzneimittel grundsätzlich unbegrenzt gültig','Falls verschreibungspflichtiges Arzneimittel: üblicherweise max. ca. 3 Monate'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      return {status:'unlimited',label:'Gültig (unbegrenzt)',explanation:'Für OTC-Arzneimittel unbegrenzt gültig. Bei verschreibungspflichtigen Arzneimitteln ca. 3 Monate.'};
+    },totalDays(){return 0;}
+  },
+  {
+    id:'btm', name:'BTM-Rezept', subtitle:'Betäubungsmittelrezept – Gelb',
+    icon:'⚠️', category:'btm', validityDescription:'7 Tage (inkl. Ausstelltag)',
+    details:['7 Tage gültig – Ausstelltag wird mitgezählt (Kalendertage)'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=6) return {status:'valid',label:'Gültig',daysRemaining:6-days,explanation:`Noch ${6-days} Tag(e) gültig (inkl. Ausstelltag).`};
+      return {status:'expired',label:'Abgelaufen',explanation:'Die 7-Tage-Frist (inkl. Ausstelltag) ist abgelaufen.'};
+    },totalDays(){return 7;}
+  },
+  {
+    id:'trezept', name:'T-Rezept', subtitle:'z.B. Lenalidomid, Thalidomid',
+    icon:'🔴', category:'btm', validityDescription:'6 Tage (inkl. Ausstelltag)',
+    details:['6 Tage gültig – Ausstelltag wird mitgezählt'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=5) return {status:'valid',label:'Gültig',daysRemaining:5-days,explanation:`Noch ${5-days} Tag(e) gültig (inkl. Ausstelltag).`};
+      return {status:'expired',label:'Abgelaufen',explanation:'Die 6-Tage-Frist (inkl. Ausstelltag) ist abgelaufen.'};
+    },totalDays(){return 6;}
+  },
+  {
+    id:'weissesrezept', name:'Weißes Sonderrezept', subtitle:'Bestimmte Risikostoffe',
+    icon:'⬜', category:'sonstige', validityDescription:'6 Tage (analog T-Rezept)',
+    details:['Typischerweise 6 Tage gültig, analog zu T-Rezept-Sonderregelungen'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=5) return {status:'valid',label:'Gültig',daysRemaining:5-days,explanation:`Noch ${5-days} Tag(e) gültig (inkl. Ausstelltag).`};
+      return {status:'expired',label:'Abgelaufen',explanation:'Die 6-Tage-Frist (inkl. Ausstelltag) ist abgelaufen.'};
+    },totalDays(){return 6;}
+  },
+  {
+    id:'wiederholungserezept', name:'Wiederholungs-E-Rezept', subtitle:'Dauermedikation',
+    icon:'🔄', category:'sonstige', validityDescription:'Max. 365 Tage',
+    details:['Verordnung insgesamt max. 365 Tage nach Ausstellung nutzbar','Genaue Einlösezeiträume sind im jeweiligen E-Rezept hinterlegt'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      if(days<=364) return {status:'valid',label:'Gültig',daysRemaining:364-days,explanation:`Noch ${364-days} Tag(e) gültig. Genaue Einlösezeiträume im E-Rezept prüfen.`};
+      return {status:'expired',label:'Abgelaufen',explanation:'Die 365-Tage-Frist ist abgelaufen.'};
+    },totalDays(){return 365;}
+  },
+  {
+    id:'entlassrezept', name:'Entlassrezept', subtitle:'Krankenhaus (inkl. BTM/T)',
+    icon:'🏥', category:'sonstige', validityDescription:'3 Werktage (inkl. Ausstelltag)',
+    details:['3 Werktage gültig – Ausstelltag zählt mit','Sonn- und Feiertage zählen nicht als Werktage'],
+    calc(issue,check){
+      const days=daysBetween(issue,check);
+      if(days<0) return {status:'check',label:'Noch nicht ausgestellt',explanation:'Das Ausstelldatum liegt in der Zukunft.'};
+      const lastValidDay=getLastValidWerktag(issue,3);
+      if(check<=lastValidDay){
+        const remaining=daysBetween(check,lastValidDay);
+        const werktagsRemaining=countWerktage(check,lastValidDay)-1;
+        return {status:'valid',label:'Gültig',daysRemaining:remaining,explanation:`Noch ${werktagsRemaining} Werktag(e) gültig (bis ${lastValidDay.toLocaleDateString('de-DE')}).`};
+      }
+      return {status:'expired',label:'Abgelaufen',explanation:`Die 3-Werktage-Frist ist abgelaufen (letzter Tag: ${lastValidDay.toLocaleDateString('de-DE')}).`};
+    },totalDays(){return 3;}
+  }
+];
+const categories = [
+  {id:'standard', name:'Standardrezepte', icon:'📄'},
+  {id:'btm', name:'Betäubungsmittel & besondere Risiken', icon:'⚠️'},
+  {id:'sonstige', name:'Sonstige Verordnungen', icon:'📑'}
+];
+// ==================== STATE ====================
+let currentViewMode = 'detail';
+let expandedCards = new Set();
+// ==================== HELPERS ====================
+function formatDateDE(d) {
+  return d.toLocaleDateString('de-DE', {weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+}
+function formatInputDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function getIssueDate() {
+  const val = document.getElementById('issueDate').value;
+  const d = new Date(val + 'T00:00:00');
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+// ==================== ACTIONS ====================
+function setToday() {
+  document.getElementById('issueDate').value = formatInputDate(new Date());
+  render();
+}
+function adjustDays(n) {
+  const d = getIssueDate();
+  d.setDate(d.getDate() + n);
+  document.getElementById('issueDate').value = formatInputDate(d);
+  render();
+}
+function setViewMode(mode) {
+  currentViewMode = mode;
+  document.getElementById('btnDetail').className = mode==='detail'
+    ? 'px-3 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm text-slate-800'
+    : 'px-3 py-1.5 rounded-md text-sm font-medium transition text-slate-500 hover:text-slate-700';
+  document.getElementById('btnQuick').className = mode==='quick'
+    ? 'px-3 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm text-slate-800'
+    : 'px-3 py-1.5 rounded-md text-sm font-medium transition text-slate-500 hover:text-slate-700';
+  render();
+}
+function toggleCard(id) {
+  if (expandedCards.has(id)) expandedCards.delete(id); else expandedCards.add(id);
+  render();
+}
+// ==================== BADGE & ICON HTML ====================
+function badgeConfig(status) {
+  const map = {
+    valid:{bg:'bg-emerald-100',text:'text-emerald-800',border:'border-emerald-300',dot:'bg-emerald-500',pulse:true},
+    selfpay:{bg:'bg-amber-100',text:'text-amber-800',border:'border-amber-300',dot:'bg-amber-500',pulse:false},
+    expired:{bg:'bg-red-100',text:'text-red-800',border:'border-red-300',dot:'bg-red-500',pulse:false},
+    unlimited:{bg:'bg-emerald-100',text:'text-emerald-800',border:'border-emerald-300',dot:'bg-emerald-500',pulse:true},
+    check:{bg:'bg-slate-100',text:'text-slate-600',border:'border-slate-300',dot:'bg-slate-400',pulse:false},
+  };
+  return map[status];
+}
+function statusBadgeHTML(result) {
+  const c = badgeConfig(result.status);
+  const pingHTML = c.pulse ? `<span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${c.dot}"></span>` : '';
+  return `<span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${c.bg} ${c.text} ${c.border}">
+    <span class="relative flex h-2.5 w-2.5">${pingHTML}<span class="relative inline-flex h-2.5 w-2.5 rounded-full ${c.dot}"></span></span>
+    ${escHTML(result.label)}
+  </span>`;
+}
+function statusIconHTML(status) {
+  if (status==='valid'||status==='unlimited') return `<svg class="h-8 w-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+  if (status==='selfpay') return `<svg class="h-8 w-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>`;
+  if (status==='expired') return `<svg class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+  return `<svg class="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+}
+function escHTML(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+// ==================== PROGRESS BAR ====================
+function progressBarHTML(result, rx) {
+  if (result.status==='unlimited'||result.status==='check') return '';
+  if (result.daysRemaining===undefined) return '';
+  const totalDays = rx.totalDays(result.status);
+  if (totalDays===0) return '';
+  const elapsed = totalDays - result.daysRemaining;
+  const pct = Math.min(100, Math.max(0, (elapsed/totalDays)*100));
+  const barColor = result.status==='expired'?'bg-red-400':result.status==='selfpay'?'bg-amber-400':'bg-emerald-400';
+  const rightLabel = result.status==='expired'?'Abgelaufen':`${result.daysRemaining} Tag(e) verbleibend`;
+  return `<div class="mt-3">
+    <div class="flex justify-between text-xs text-slate-500 mb-1"><span>Ausstelldatum</span><span>${escHTML(rightLabel)}</span></div>
+    <div class="h-2 w-full rounded-full bg-slate-200 overflow-hidden"><div class="h-full rounded-full progress-bar ${barColor}" style="width:${pct}%"></div></div>
+  </div>`;
+}
+// ==================== CARD HTML ====================
+function cardHTML(rx, issueDate) {
+  const today = new Date();
+  const result = rx.calc(issueDate, today);
+  const borderMap = {valid:'border-l-emerald-500',selfpay:'border-l-amber-500',expired:'border-l-red-400',unlimited:'border-l-emerald-500',check:'border-l-slate-300'};
+  const bgMap = {valid:'bg-emerald-50/50',selfpay:'bg-amber-50/50',expired:'bg-red-50/30',unlimited:'bg-emerald-50/50',check:'bg-slate-50'};
+  const expanded = expandedCards.has(rx.id);
+  let detailsHTML = '';
+  if (expanded) {
+    const items = rx.details.map(d => `<li class="flex items-start gap-2 text-sm text-slate-600"><span class="mt-1.5 h-1.5 w-1.5 rounded-full bg-slate-400 flex-shrink-0"></span>${escHTML(d)}</li>`).join('');
+    detailsHTML = `<div class="border-t border-slate-200 px-5 py-4 bg-white/60 rounded-b-xl">
+      <h4 class="text-sm font-semibold text-slate-600 mb-2">Details &amp; Hinweise</h4>
+      <ul class="space-y-1.5">${items}</ul>
+    </div>`;
+  }
+  return `<div class="group relative rounded-xl border border-slate-200 border-l-4 shadow-sm card-transition ${borderMap[result.status]} ${bgMap[result.status]}">
+    <button onclick="toggleCard('${rx.id}')" class="w-full text-left p-4 sm:p-5 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-inset rounded-xl">
+      <div class="flex items-start gap-3 sm:gap-4">
+        <div class="flex-shrink-0 text-2xl sm:text-3xl mt-0.5">${rx.icon}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div><h3 class="text-base sm:text-lg font-bold text-slate-800">${escHTML(rx.name)}</h3><p class="text-xs sm:text-sm text-slate-500">${escHTML(rx.subtitle)}</p></div>
+            <div class="flex items-center gap-2 flex-shrink-0">${statusBadgeHTML(result)}</div>
+          </div>
+          <div class="mt-3 flex items-center gap-3">
+            ${statusIconHTML(result.status)}
+            <div><p class="text-sm font-medium text-slate-700">${escHTML(result.explanation)}</p><p class="text-xs text-slate-400 mt-0.5">Gültigkeitsdauer: ${escHTML(rx.validityDescription)}</p></div>
+          </div>
+          ${progressBarHTML(result, rx)}
+        </div>
+        <div class="flex-shrink-0 mt-1">
+          <svg class="h-5 w-5 text-slate-400 expand-icon ${expanded?'rotated':''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+      </div>
+    </button>
+    ${detailsHTML}
+  </div>`;
+}
+// ==================== QUICK TILE ====================
+function quickTileHTML(rx, issueDate) {
+  const today = new Date();
+  const result = rx.calc(issueDate, today);
+  const bgMap = {valid:'bg-emerald-500',selfpay:'bg-amber-500',expired:'bg-red-400',unlimited:'bg-emerald-500',check:'bg-slate-400'};
+  let daysHTML = '';
+  if (result.daysRemaining!==undefined && result.status!=='expired') {
+    daysHTML = `<p class="text-lg font-black mt-1">${result.daysRemaining} T</p>`;
+  }
+  return `<div class="relative rounded-xl p-4 text-white shadow-md quick-tile ${bgMap[result.status]}">
+    <div class="text-2xl mb-2">${rx.icon}</div>
+    <h3 class="font-bold text-sm leading-tight">${escHTML(rx.name)}</h3>
+    <p class="text-xs mt-1 opacity-90">${escHTML(result.label)}</p>
+    ${daysHTML}
+  </div>`;
+}
+// ==================== RENDER ====================
+function render() {
+  const issueDate = getIssueDate();
+  const today = new Date();
+  // Date info text
+  const diff = Math.floor((today.getTime() - issueDate.getTime()) / 86400000);
+  let diffText;
+  if (diff===0) diffText='heute';
+  else if (diff===1) diffText='gestern';
+  else if (diff>0) diffText=`vor ${diff} Tagen`;
+  else if (diff===-1) diffText='morgen';
+  else diffText=`in ${Math.abs(diff)} Tagen`;
+  document.getElementById('dateInfoText').innerHTML = `Ausstelldatum: <strong>${formatDateDE(issueDate)}</strong> <span class="text-slate-400 ml-2">(${diffText})</span>`;
+  const area = document.getElementById('contentArea');
+  if (currentViewMode === 'quick') {
+    area.innerHTML = `<div class="mb-8"><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">${prescriptionTypes.map(rx => quickTileHTML(rx, issueDate)).join('')}</div></div>`;
+  } else {
+    let html = '<div class="space-y-8">';
+    for (const cat of categories) {
+      const rxs = prescriptionTypes.filter(rx => rx.category===cat.id);
+      html += `<section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xl">${cat.icon}</span>
+          <h2 class="text-lg font-bold text-slate-700">${escHTML(cat.name)}</h2>
+          <div class="flex-1 h-px bg-slate-200 ml-2"></div>
+        </div>
+        <div class="space-y-3">${rxs.map(rx => cardHTML(rx, issueDate)).join('')}</div>
+      </section>`;
+    }
+    html += '</div>';
+    area.innerHTML = html;
+  }
+}
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('headerDate').textContent = formatDateDE(new Date());
+  document.getElementById('footerYear').textContent = new Date().getFullYear();
+  document.getElementById('issueDate').value = formatInputDate(new Date());
+  document.getElementById('issueDate').addEventListener('change', render);
+  render();
+});
+</script>
+</body>
+</html>
